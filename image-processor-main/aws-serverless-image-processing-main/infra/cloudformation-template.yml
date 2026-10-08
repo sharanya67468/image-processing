@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Serverless Image Handler Architecture'
+
+Parameters:
+  DeployDemoUI:
+    Type: String
+    Default: 'Yes'
+    AllowedValues: ['Yes', 'No']
+    Description: 'Specify whether to deploy the demo user interface (UI) bucket.'
+
+  EnableSignature:
+    Type: String
+    Default: 'No'
+    AllowedValues: ['Yes', 'No']
+    Description: 'Specify whether to enable the signature for image validation.'
+
+Resources:
+  ImageHandlerDistribution:
+    Type: 'AWS::CloudFront::Distribution'
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub '${ImageBucket}.s3.amazonaws.com'
+            Id: ImageOrigin
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        Enabled: 'true'
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+          CachedMethods:
+            - GET
+          ForwardedValues:
+            QueryString: 'false'
+          TargetOriginId: ImageOrigin
+
+  ApiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: ImageHandlerApi
+
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      FunctionName: ImageHandlerFunction
+      Runtime: nodejs14.x
+      Timeout: 30
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref ImageHandlerBucket
+        S3Key: lambda/function.zip
+
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+
+  ImageHandlerBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub 'image-handler-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      Tags:
+        - Key: 'Name'
+          Value: 'ImageHandlerBucket'
+
+  DemoUIBucket:
+    Type: 'AWS::S3::Bucket'
+    Condition: DeployDemoUI
+    Properties:
+      BucketName: !Sub 'demo-ui-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      Tags:
+        - Key: 'Name'
+          Value: 'DemoUIBucket'
+
+  SecretsManagerSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Condition: EnableSignature
+    Properties:
+      Name: 'ImageHandlerSecret'
+      SecretString: '{"key": "your-secret-key"}'
+
+Outputs:
+  ImageHandlerApiUrl:
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com'
+    Description: 'URL for the Serverless Image Handler API.'

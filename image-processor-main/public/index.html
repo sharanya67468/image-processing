@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AWS Serverless Image Processor – Local Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #08090d;
+      --surface:   #0f111a;
+      --card:      #141828;
+      --border:    #1e2440;
+      --accent:    #6c63ff;
+      --accent2:   #ff6584;
+      --teal:      #00d4aa;
+      --gold:      #ffd166;
+      --text:      #e8ecf4;
+      --muted:     #6b7394;
+      --radius:    16px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 10%, rgba(108,99,255,.12) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 80% 80%, rgba(0,212,170,.08) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      position: relative; z-index: 10;
+      padding: 20px 40px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15,17,26,.8);
+      backdrop-filter: blur(20px);
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--teal));
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      box-shadow: 0 0 20px rgba(108,99,255,.4);
+    }
+    .logo-title { font-size: 18px; font-weight: 700; }
+    .logo-sub { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+
+    .badge {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(0,212,170,.1); border: 1px solid rgba(0,212,170,.3);
+      border-radius: 20px; padding: 6px 14px;
+      font-size: 12px; font-weight: 600; color: var(--teal);
+    }
+    .badge::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--teal); animation: pulse 1.4s ease infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative; z-index: 1;
+      text-align: center; padding: 60px 20px 40px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 56px); font-weight: 800; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 30%, var(--accent) 70%, var(--teal) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+    .hero p { color: var(--muted); font-size: 16px; max-width: 540px; margin: 0 auto; line-height: 1.7; }
+
+    /* ── Pipeline chips ── */
+    .pipeline {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; flex-wrap: wrap; margin: 32px 20px;
+      position: relative; z-index: 1;
+    }
+    .pipe-chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600;
+      color: var(--muted); transition: all .2s;
+    }
+    .pipe-chip:hover { border-color: var(--accent); color: var(--text); }
+    .pipe-arrow { color: var(--border); font-size: 14px; }
+
+    /* ── Main layout ── */
+    .container {
+      position: relative; z-index: 1;
+      max-width: 1240px; margin: 0 auto;
+      padding: 0 24px 60px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+    }
+    @media(max-width:900px){ .container{ grid-template-columns:1fr; } }
+    @media(min-width:901px){ .container{ grid-template-columns: 1fr 1fr; } }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+
+    .card-header {
+      padding: 20px 24px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .card-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+    }
+    .card-title { font-size: 15px; font-weight: 700; }
+    .card-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .card-body  { padding: 24px; }
+
+    /* ── Drop Zone ── */
+    #dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .25s;
+      position: relative;
+    }
+    #dropzone:hover, #dropzone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108,99,255,.06);
+    }
+    #dropzone .dz-icon { font-size: 40px; margin-bottom: 12px; opacity: .6; }
+    #dropzone .dz-text { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    #dropzone .dz-sub  { font-size: 12px; color: var(--muted); }
+    #dropzone input[type=file] { display:none; }
+
+    #preview-wrap { display: none; margin-top: 18px; }
+    .gallery-img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      display: block;
+    }
+    .preview-meta {
+      margin-top: 10px; font-size: 12px; color: var(--muted);
+      display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    .preview-meta span { background: var(--surface); padding: 3px 10px; border-radius: 6px; }
+
+    /* ── Feature grid ── */
+    .feature-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;
+    }
+    .feat-btn {
+      display: flex; flex-direction: column; align-items: flex-start;
+      gap: 4px; padding: 14px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 10px; cursor: pointer; transition: all .2s;
+      text-align: left;
+    }
+    .feat-btn:hover { border-color: var(--accent); background: rgba(108,99,255,.06); }
+    .feat-btn.active {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, rgba(108,99,255,.15), rgba(0,212,170,.08));
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .feat-btn .feat-icon { font-size: 20px; }
+    .feat-btn .feat-name { font-size: 12px; font-weight: 700; }
+    .feat-btn .feat-desc { font-size: 10px; color: var(--muted); }
+
+    /* ── Extra params ── */
+    #extra-params { margin-bottom: 20px; }
+    .param-row { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
+    .param-row label { font-size: 12px; color: var(--muted); white-space: nowrap; width: 70px; }
+    .param-row input[type=number], .param-row input[type=range] {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; color: var(--text);
+      font-size: 13px; outline: none; transition: border .2s;
+    }
+    .param-row input:focus { border-color: var(--accent); }
+
+    /* ── Process button ── */
+    #process-btn {
+      width: 100%; padding: 16px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border: none; border-radius: 10px;
+      color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer; transition: all .2s; letter-spacing: .3px;
+    }
+    #process-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(108,99,255,.4); }
+    #process-btn:disabled {
+      opacity: .5; cursor: not-allowed; transform: none; box-shadow: none;
+    }
+    #process-btn .btn-inner { display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+    /* ── Result panel ── */
+    #result-panel { display: none; }
+    #result-img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: scale-down;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      display: block;
+    }
+
+    .result-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px;
+    }
+    .stat-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; text-align: center;
+    }
+    .stat-box .stat-val { font-size: 18px; font-weight: 700; color: var(--teal); }
+    .stat-box .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+
+    .op-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(108,99,255,.15); border: 1px solid rgba(108,99,255,.3);
+      border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600;
+      color: #a89fff; margin-top: 14px;
+    }
+
+    #download-btn {
+      margin-top: 16px; width: 100%; padding: 13px;
+      background: rgba(0,212,170,.1); border: 1px solid rgba(0,212,170,.3);
+      border-radius: 10px; color: var(--teal); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all .2s;
+    }
+    #download-btn:hover { background: rgba(0,212,170,.2); }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Architecture diagram ── */
+    .arch-row {
+      display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px;
+    }
+    .arch-step {
+      display: flex; align-items: center; gap: 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; transition: all .2s;
+    }
+    .arch-step:hover { border-color: var(--accent); }
+    .arch-step .s-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      flex-shrink: 0;
+    }
+    .arch-step .s-info { flex: 1; }
+    .arch-step .s-name { font-size: 13px; font-weight: 600; }
+    .arch-step .s-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .arch-step .s-tag {
+      font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    .arch-arrow { text-align: center; color: var(--muted); font-size: 18px; line-height: 1; }
+
+    /* ── Error toast ── */
+    #toast {
+      position: fixed; bottom: 30px; right: 30px; z-index: 9999;
+      background: #ff4466; color: #fff; border-radius: 10px;
+      padding: 14px 22px; font-size: 14px; font-weight: 600;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+      transform: translateY(100px); opacity: 0;
+      transition: all .35s cubic-bezier(.34,1.56,.64,1);
+      max-width: 340px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Empty state ── */
+    #empty-state {
+      padding: 60px 20px; text-align: center; color: var(--muted);
+    }
+    #empty-state .es-icon { font-size: 48px; opacity: .3; margin-bottom: 12px; }
+    #empty-state p { font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🖼️</div>
+    <div>
+      <div class="logo-title">Serverless Image Processor</div>
+      <div class="logo-sub">AWS Architecture · Local Demo</div>
+    </div>
+  </div>
+  <div class="badge">🟢 Running Locally</div>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>Serverless Image Processing System</h1>
+</div>
+
+<!-- Pipeline chips -->
+<div class="pipeline">
+  <div class="pipe-chip">☁️ CloudFront CDN</div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-chip">🔌 API Gateway</div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-chip">⚡ Lambda</div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-chip">🪣 S3 Storage</div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-chip">👁️ Rekognition</div>
+</div>
+
+<!-- Main content -->
+<div class="container">
+
+  <!-- LEFT: Upload + Controls -->
+  <div>
+    <!-- Upload Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(108,99,255,.15);">📤</div>
+        <div>
+          <div class="card-title">Upload Image</div>
+          <div class="card-sub">Simulates S3 PutObject event</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="dropzone" onclick="document.getElementById('file-input').click()">
+          <input type="file" id="file-input" accept="image/*"/>
+          <div class="dz-icon">🌄</div>
+          <div class="dz-text">Drop image here or click to browse</div>
+          <div class="dz-sub">PNG, JPG, WEBP · Max 10 MB</div>
+        </div>
+        <div id="preview-wrap">
+          <img id="preview-img" class="gallery-img" src="" alt="Preview"/>
+          <div class="preview-meta" id="preview-meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features Card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(0,212,170,.12);">⚡</div>
+        <div>
+          <div class="card-title">Choose Feature</div>
+          <div class="card-sub">Simulates Lambda handler logic</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="feature-grid">
+          <button class="feat-btn active" data-feature="smartCropping"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">🤖</span>
+            <span class="feat-name">Smart Crop</span>
+            <span class="feat-desc">Rekognition-powered</span>
+          </button>
+          <button class="feat-btn" data-feature="contentModeration"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">🛡️</span>
+            <span class="feat-name">Content Moderation</span>
+            <span class="feat-desc">Blur flagged images</span>
+          </button>
+          <button class="feat-btn" data-feature="resize"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">📐</span>
+            <span class="feat-name">Resize</span>
+            <span class="feat-desc">Custom dimensions</span>
+          </button>
+          <button class="feat-btn" data-feature="grayscale"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">🎞️</span>
+            <span class="feat-name">Grayscale</span>
+            <span class="feat-desc">Black & white</span>
+          </button>
+
+          <button class="feat-btn" data-feature="compress"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">🗜️</span>
+            <span class="feat-name">Compress</span>
+            <span class="feat-desc">Reduce file size</span>
+          </button>
+
+          <button class="feat-btn" data-feature="rotate"
+            onclick="selectFeature(this)">
+            <span class="feat-icon">🔄</span>
+            <span class="feat-name">Rotate</span>
+            <span class="feat-desc">Any angle</span>
+          </button>
+
+        </div>
+
+        <!-- Dynamic params -->
+        <div id="extra-params"></div>
+
+        <button id="process-btn" onclick="processImage()">
+          <div class="btn-inner">
+            <div class="spinner" id="spinner"></div>
+            <span id="btn-text">⚡ Process Image</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Result + Architecture -->
+  <div>
+    <!-- Result Card -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(255,209,102,.1);">📥</div>
+        <div>
+          <div class="card-title">Processed Output</div>
+          <div class="card-sub">Simulates Lambda response + CloudFront delivery</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="empty-state">
+          <div class="es-icon">🌄</div>
+          <p>Upload an image and select a feature to see the result here.</p>
+        </div>
+        <div id="result-panel">
+          <img id="result-img" src="" alt="Processed Image"/>
+          <div id="op-badge-wrap"></div>
+          <div class="result-stats" id="result-stats"></div>
+          <button id="download-btn" onclick="downloadResult()">⬇️ Download Processed Image</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  let selectedFile = null;
+  let selectedFeature = 'smartCropping';
+  let resultDataUrl = null;
+
+  // ── Feature selection ────────────────────────────────────────────────────────
+  function selectFeature(btn) {
+    document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedFeature = btn.dataset.feature;
+    renderExtraParams();
+  }
+
+  function renderExtraParams() {
+    const ep = document.getElementById('extra-params');
+    const params = {
+      resize: `
+        <div class="param-row">
+          <label>Width (px)</label>
+          <input type="number" id="p-width" value="800" min="50" max="4000"/>
+        </div>
+        <div class="param-row">
+          <label>Height (px)</label>
+          <input type="number" id="p-height" value="600" min="50" max="4000"/>
+        </div>`,
+      compress: `
+        <div class="param-row">
+          <label>Quality (1-100)</label>
+          <input type="number" id="p-quality" value="40" min="1" max="100"/>
+        </div>`,
+      rotate: `
+        <div class="param-row">
+          <label>Angle (°)</label>
+          <input type="number" id="p-angle" value="90" min="-360" max="360" step="90"/>
+        </div>`,
+    };
+    ep.innerHTML = params[selectedFeature] || '';
+  }
+
+  // ── File drop / select ───────────────────────────────────────────────────────
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) handleFile(f);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+  function handleFile(file) {
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('preview-img').src = e.target.result;
+      document.getElementById('preview-wrap').style.display = 'block';
+      const meta = document.getElementById('preview-meta');
+      meta.innerHTML = `
+        <span>📁 ${file.name}</span>
+        <span>📦 ${(file.size/1024).toFixed(1)} KB</span>
+        <span>🗂️ ${file.type.split('/')[1].toUpperCase()}</span>`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Process ──────────────────────────────────────────────────────────────────
+  async function processImage() {
+    if (!selectedFile) { showToast('Please upload an image first!'); return; }
+
+    const btn = document.getElementById('process-btn');
+    const spinner = document.getElementById('spinner');
+    const btnText = document.getElementById('btn-text');
+
+    btn.disabled = true;
+    spinner.style.display = 'block';
+    btnText.textContent = 'Processing…';
+
+    const form = new FormData();
+    form.append('image', selectedFile);
+    form.append('feature', selectedFeature);
+    if (selectedFeature === 'resize') {
+      form.append('width',  document.getElementById('p-width')?.value  || 800);
+      form.append('height', document.getElementById('p-height')?.value || 600);
+    }
+    if (selectedFeature === 'rotate') {
+      form.append('angle', document.getElementById('p-angle')?.value || 90);
+    }
+    if (selectedFeature === 'compress') {
+      form.append('quality', document.getElementById('p-quality')?.value || 40);
+    }
+
+    try {
+      const res = await fetch('/process', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server error');
+      showResult(data);
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      spinner.style.display = 'none';
+      btnText.textContent = '⚡ Process Image';
+    }
+  }
+
+  function showResult(data) {
+    resultDataUrl = data.image;
+    document.getElementById('result-img').src = data.image;
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('result-panel').style.display = 'block';
+
+    // op badge
+    document.getElementById('op-badge-wrap').innerHTML =
+      `<div class="op-badge">✅ ${data.info.operation}${data.info.note ? ' – ' + data.info.note : ''}</div>`;
+
+    // stats
+    const origKB  = (data.original.size  / 1024).toFixed(1);
+    const procKB  = (data.processed.size / 1024).toFixed(1);
+    const savings = Math.max(0, (100 - (data.processed.size / data.original.size) * 100)).toFixed(0);
+    document.getElementById('result-stats').innerHTML = `
+      <div class="stat-box">
+        <div class="stat-val">${data.processed.width}×${data.processed.height}</div>
+        <div class="stat-lbl">Output Size</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val">${procKB} KB</div>
+        <div class="stat-lbl">File Size</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" style="color:var(--gold)">${savings}%</div>
+        <div class="stat-lbl">Size Saving</div>
+      </div>`;
+  }
+
+  function downloadResult() {
+    if (!resultDataUrl) return;
+    const a = document.createElement('a');
+    a.href = resultDataUrl;
+    a.download = `processed_${selectedFeature}_${Date.now()}.jpg`;
+    a.click();
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  // Init
+  renderExtraParams();
+</script>
+</body>
+</html>
